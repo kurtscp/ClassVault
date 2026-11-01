@@ -202,3 +202,4 @@ import { Users } from 'lucide-react-native';
 - **Styling Rules:** Never use hardcoded hex colors, arbitrary Tailwind values, or `fontWeight` styles.
 - **Component Text:** Never import `Text` from `react-native`; always use `<Text>` from `@/components/ui`.
 - **Secrets:** Never commit `.env` or reference the Supabase `service_role` key.
+

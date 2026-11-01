@@ -9,3 +9,4 @@
 | Styling fixes, navigation layout, assets wiring, `src/services/analytics.ts`, `src/hooks/useAnalytics.ts`, grading screens, analytics screens | **Member 5** | Edits styling only in others' screens; owns grading/analytics logic |
 
 \* `src/lib/files.ts` is created by Member 4 as an explicit exception to the `src/lib/*` rule.
+

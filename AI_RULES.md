@@ -189,3 +189,4 @@ outcome ("Upload material", "Join course", "Post comment"). Errors say what
 happened + how to fix it; no apologies. Empty states invite an action.
 
 If a design need is not covered here, STOP and ask. Do not invent a style.
+
