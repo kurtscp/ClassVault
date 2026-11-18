@@ -271,7 +271,8 @@ create policy "courses_select_enrolled_or_owner"
     instructor_id = (select auth.uid())
     or exists (
       select 1 from public.enrollments e
-      where e.course_id = id and e.student_id = (select auth.uid())
+      where e.course_id = public.courses.id
+        and e.student_id = (select auth.uid())
     )
   );
 

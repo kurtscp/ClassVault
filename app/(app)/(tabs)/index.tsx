@@ -1,5 +1,6 @@
+﻿import { useCallback } from 'react';
 import { FlatList, RefreshControl, View } from 'react-native';
-import { useRouter, type Href } from 'expo-router';
+import { useRouter, useFocusEffect, type Href } from 'expo-router';
 import { AlertCircle, BookOpen, Plus } from 'lucide-react-native';
 
 import { CourseCard } from '@/components/courses/CourseCard';
@@ -29,9 +30,6 @@ interface TailwindThemeConfig {
 const tailwindConfig = require('../../../tailwind.config') as TailwindThemeConfig;
 const brandColor = tailwindConfig.theme.colors.brand;
 
-/**
- * Three skeleton placeholder cards displayed while courses are loading (UX-1).
- */
 function CourseSkeletons() {
   return (
     <View className="gap-3">
@@ -52,15 +50,18 @@ function CourseSkeletons() {
   );
 }
 
-/**
- * Primary Courses Dashboard screen (P3.2).
- * Shows role-scoped course cards, header actions, pull-to-refresh,
- * and robust three-state async rendering (loading, empty, error).
- */
 export default function CoursesScreen() {
   const router = useRouter();
   const { role } = useAuth();
   const { courses, error, status, isLoading, isRefreshing, refetch } = useCourses();
+
+  // Refetch whenever this screen comes into focus — covers returning from /enroll,
+  // /course/new, and any other screen that modifies the courses list.
+  useFocusEffect(
+    useCallback(() => {
+      void refetch();
+    }, [refetch])
+  );
 
   const userRole = role ?? 'student';
   const isInstructor = userRole === 'instructor';
