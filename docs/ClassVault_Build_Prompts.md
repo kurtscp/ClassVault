@@ -2185,6 +2185,20 @@ as $$
   );
 $$;
 
+-- 4c2. Helper: is the current user the instructor of this course? (Breaks RLS policy recursion)
+create or replace function public.is_course_instructor(p_course_id uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select exists (
+    select 1 from public.courses c
+    where c.id = p_course_id and c.instructor_id = (select auth.uid())
+  );
+$$;
+
 -- 4d. Enrollment RPC: enroll a student using a join code
 create or replace function public.enroll_with_code(p_join_code text)
 returns uuid  -- returns the course_id
@@ -2271,10 +2285,7 @@ create policy "enrollments_select_participant"
   on public.enrollments for select to authenticated
   using (
     student_id = (select auth.uid())
-    or exists (
-      select 1 from public.courses c
-      where c.id = course_id and c.instructor_id = (select auth.uid())
-    )
+    or public.is_course_instructor(course_id)
   );
 
 -- DELETE: student can unenroll, or instructor can remove a student
@@ -2282,29 +2293,14 @@ create policy "enrollments_delete_participant"
   on public.enrollments for delete to authenticated
   using (
     student_id = (select auth.uid())
-    or exists (
-      select 1 from public.courses c
-      where c.id = course_id and c.instructor_id = (select auth.uid())
-    )
+    or public.is_course_instructor(course_id)
   );
 
 -- ----- MATERIALS -----
 -- Readable by course owner or enrolled students
 create policy "materials_select_enrolled_or_owner"
   on public.materials for select to authenticated
-  using (
-    exists (
-      select 1 from public.courses c
-      where c.id = course_id
-      and (
-        c.instructor_id = (select auth.uid())
-        or exists (
-          select 1 from public.enrollments e
-          where e.course_id = c.id and e.student_id = (select auth.uid())
-        )
-      )
-    )
-  );
+  using (public.is_enrolled(course_id));
 
 create policy "materials_insert_course_owner"
   on public.materials for insert to authenticated

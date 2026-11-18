@@ -38,6 +38,7 @@ export function useAsync<T>(
 
     if (isRefresh) {
       setIsRefreshing(true);
+      setError(null);
     } else {
       setStatus('loading');
       setError(null);
