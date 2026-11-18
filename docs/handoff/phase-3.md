@@ -1,110 +1,151 @@
 ﻿# Phase 3 Handoff — ClassVault
 
-## What was built
+> **Stack rules (locked):** Expo SDK 58 + TypeScript strict + expo-router · NativeWind v4 +
+> Tailwind 3.4 · Supabase only (no Firebase, no state libs) · lucide-react-native icons only ·
+> No `any`, no `!`, no `@ts-ignore`. Read the full A1 rules doc before touching any file.
 
-### Authentication & enrollment (Phase 1–2)
-- Sign-up / sign-in with role selection (instructor / student)
-- Join-code enrollment via `enroll_with_code` RPC (SECURITY DEFINER)
-- Courses dashboard with `useFocusEffect` refresh
+---
 
-### Course management
-| Screen | File | Who can see it |
+## 1. What was built
+
+### Screens
+
+| Route | File | Access |
 |---|---|---|
 | Courses dashboard | `app/(app)/(tabs)/index.tsx` | All authenticated users |
-| Create course | `app/(app)/course/new.tsx` | Instructors only (redirects students) |
-| Course detail | `app/(app)/course/[id].tsx` | Enrolled students + course instructor |
-| Material detail | `app/(app)/course/[id]/material/[materialId].tsx` | Enrolled students + course instructor |
+| Create course | `app/(app)/course/new.tsx` | Instructor only (redirects students) |
+| Course detail | `app/(app)/course/[id].tsx` | Enrolled student or course instructor |
+| Material detail + comments | `app/(app)/course/[id]/material/[materialId].tsx` | Enrolled student or course instructor |
+| Join course | `app/(app)/enroll.tsx` | Student only |
 
-### RLS policy fix applied in Supabase
-`courses_select_enrolled_or_owner` had a bug: `e.course_id = e.id` (self-reference).
-Fixed to `e.course_id = public.courses.id`. The fix is in `supabase/migrations/0001_init.sql`
-and was applied live in the Supabase SQL editor.
+### Services (`src/services/`)
 
-### Components
-| Component | File | Purpose |
-|---|---|---|
-| `MaterialRow` | `src/components/courses/MaterialRow.tsx` | Card row for materials list |
-| `CommentItem` | `src/components/comments/CommentItem.tsx` | Single comment with delete confirm |
-| `CommentInput` | `src/components/comments/CommentInput.tsx` | Sticky bottom comment bar |
-
-### Services & hooks added
 | File | Exports |
 |---|---|
-| `src/services/submissions.ts` | `getStudentSubmission(materialId, studentId)` |
-| `src/hooks/useMaterial.ts` | `useMaterial(materialId)` |
+| `auth.ts` | `signIn`, `signUp`, `signOut`, `getProfile`, `getSession`, `onAuthStateChange` |
+| `courses.ts` | `listCourses`, `getCourse`, `createCourse`, `deleteCourse`, `listEnrolledStudents`, `removeStudent` |
+| `enrollment.ts` | `enrollWithCode`, `getMyEnrollments`, `unenrollFromCourse` |
+| `materials.ts` | `listMaterials`, `getMaterial`, `listMaterialsWithSubmissionStatus` |
+| `comments.ts` | `listComments`, `addComment`, `deleteComment` |
+| `submissions.ts` | `getStudentSubmission(materialId, studentId)` |
+
+### Hooks (`src/hooks/`)
+
+`useAuth` · `useCourses` · `useCourse` · `useMaterials` · `useMaterial` · `useComments` · `useEnrollment` · `useAsync`
+
+### Components
+
+| Component | File | Props |
+|---|---|---|
+| `MaterialRow` | `src/components/courses/MaterialRow.tsx` | `material`, `onPress?`, `showStatus?` |
+| `CommentItem` | `src/components/comments/CommentItem.tsx` | `comment`, `isOwn`, `isInstructor`, `onDelete`, `isDeleting` |
+| `CommentInput` | `src/components/comments/CommentInput.tsx` | `onSubmit`, `isSubmitting` |
+
+### UI kit (`src/components/ui/`)
+
+`Button` · `Input` · `Text` · `Card` · `Badge` · `Segmented` · `EmptyState` · `Skeleton` · `Screen` · `StatCard` · `Logo`
 
 ---
 
-## Open slots for other members
-
-### Member 4 — File upload & open
-1. **"Open file" button** in `app/(app)/course/[id]/material/[materialId].tsx`
-   - Find the comment: `* "Open file" slot — Member 4 wires this button`
-   - Add `onOpenFile` prop or inline handler that calls `supabase.storage.from('lms-files').createSignedUrl(material.file_path, 3600)` then opens with `expo-web-browser`
-   - Remove `disabled` prop from the Button once wired
-
-2. **Upload material button** in `app/(app)/course/[id].tsx`
-   - Find the comment: `* headerAction slot — Member 4 inserts the Upload material button here`
-   - Add a primary Button that navigates to the upload screen
-
-3. **Submit screen** at `app/(app)/course/[id]/material/[materialId]/submit.tsx`
-   - Use `expo-document-picker` to pick PDF/PPT/PPTX (max 80 MB)
-   - Upload via `FileSystem.uploadAsync` to `submission-files/{courseId}/{studentId}/{filename}` (FH-2)
-   - Insert row into `submissions` table
-   - On success navigate back and trigger a refetch
-
-### Member 5 — Analytics & submissions list
-1. **Course analytics** at `app/(app)/course/[id]/analytics.tsx`
-   - Instructor view: total students, materials count, view counts per material
-   - Student view: own submission grades, materials viewed
-
-2. **Submissions list** at `app/(app)/course/[id]/submissions/[materialId].tsx`
-   - Instructor only: list all student submissions for an exercise
-   - Each row: student name, submitted date, grade (if set), "Grade" button
-   - Grade action: inline 0–100 input, calls `submissions` UPDATE (RLS: `submissions_update_grade_instructor`)
-
----
-
-## Security summary
-
-| Action | RLS policy |
-|---|---|
-| Read courses | `courses_select_enrolled_or_owner` |
-| Create course | `courses_insert_instructor` |
-| Delete course | `courses_delete_owner` |
-| Read materials | `materials_select_enrolled_or_owner` |
-| Upload material | `materials_insert_course_owner` |
-| Read comments | `comments_select_enrolled` |
-| Post comment | `comments_insert_enrolled` |
-| Delete comment | `comments_delete_author_or_instructor` |
-| Submit exercise | `submissions_insert_enrolled_student` |
-| Read submission | `submissions_select_own_or_instructor` |
-| Grade submission | `submissions_update_grade_instructor` |
-| Remove student | `enrollments_delete_participant` |
-| Leave course | `enrollments_delete_participant` |
-| Read files | `lms_files_select_enrolled_or_owner` |
-| Read submission files | `submission_files_select_enrolled_or_owner` |
-
-All buckets are **private**. Files are served only via short-lived signed URLs (1 hour). Never make a bucket public (SEC-5).
-
----
-
-## Running the project
+## 2. How to run and test
 
 ```bash
 cd ClassVault
-npx expo start
-# Web: press W
-# Android: press A (requires emulator or device)
+npx expo start          # then press W for web
 ```
 
-Requires `.env` with:
+`.env` must contain (no spaces around `=`):
 ```
 EXPO_PUBLIC_SUPABASE_URL=https://orbuouiinkfjiedcgbmu.supabase.co
 EXPO_PUBLIC_SUPABASE_ANON_KEY=<anon key>
 ```
 
-## Known limitations / risks
-- `Open file` button is disabled until Member 4 wires the signed URL + browser open
-- Course analytics and submissions list screens show unmatched route until Member 5 builds them
-- `npx tsc --noEmit` should be run after Member 4 adds `expo-document-picker` usage
+**Test accounts** — create via the sign-up screen, choose role:
+- One **Instructor** account
+- One **Student** account
+
+**Minimal test data** — run once in Supabase SQL Editor:
+```sql
+-- Replace UUIDs with your instructor profile id and a real course id
+insert into public.materials (course_id, uploader_id, title, type,
+  file_path, file_name, mime_type, size_bytes)
+values (
+  '<course_id>', '<instructor_profile_id>',
+  'Test Presentation', 'presentation',
+  'test/placeholder.pdf', 'placeholder.pdf', 'application/pdf', 102400
+);
+```
+
+**Test flow:**
+1. Instructor: create a course → copy join code
+2. Student: join course with code → see course card on dashboard
+3. Student: tap course → tap material row → post comment → delete own comment
+4. Instructor: open same material → delete student's comment → tap "Delete course" → confirm
+
+---
+
+## 3. Public interfaces for the next phase
+
+### Open slots in existing screens
+
+**`app/(app)/course/[id].tsx`** — `headerAction` slot
+```
+// Find this comment in the file:
+// * headerAction slot — Member 4 inserts the Upload material button here.
+// Add a Button that navigates to your upload screen.
+```
+
+**`app/(app)/course/[id]/material/[materialId].tsx`** — Open file slot
+```
+// Find this comment:
+// * "Open file" slot — Member 4 wires this button
+// Remove the `disabled` prop and add an onPress that:
+//   1. Calls supabase.storage.from('lms-files').createSignedUrl(material.file_path, 3600)
+//   2. Opens the URL with expo-web-browser
+// Never log signed URLs (SEC-4).
+```
+
+### Key service signatures next phase will call
+
+```ts
+// Get a student's own submission for an exercise
+getStudentSubmission(materialId: string, studentId: string): Promise<Submission | null>
+
+// List materials with submission status (student view)
+listMaterialsWithSubmissionStatus(courseId, type?, studentId?): Promise<MaterialWithStatus[]>
+
+// Grade a submission — you must write this in services/submissions.ts
+// UPDATE submissions SET grade=X WHERE id=Y
+// RLS: submissions_update_grade_instructor
+```
+
+### Routes to build
+
+| Route | Owner | Notes |
+|---|---|---|
+| `app/(app)/course/[id]/analytics.tsx` | Member 5 | "Course analytics" button already routes here |
+| `app/(app)/course/[id]/submissions/[materialId].tsx` | Member 5 | "View submissions" button already routes here |
+| `app/(app)/course/[id]/material/[materialId]/submit.tsx` | Member 4 | "Submit" button already routes here |
+
+---
+
+## 4. Known issues and deliberate shortcuts
+
+- **`router.back()` warning on web** — dev-only warning when you hard-refresh a deep URL (no history stack). Not a bug; safe to ignore in development.
+- **"Open file" button is disabled** — intentional slot. Member 4 must wire it.
+- **`courses_select_enrolled_or_owner` RLS bug was fixed live** — the original migration had `e.course_id = e.id` (wrong). Fixed to `e.course_id = public.courses.id` in both Supabase and `supabase/migrations/0001_init.sql`.
+- **`useFocusEffect` on courses dashboard** — refetches on every focus. Acceptable at this scale; not debounced.
+- **Comment count badge** uses `comments.length` from already-loaded data — no extra query needed.
+
+---
+
+## 5. What the next phase must NOT change
+
+- `src/types/database.ts` — single source of truth for all table types. Add new types; never rename or remove existing ones.
+- `src/lib/errors.ts` — `toUserMessage()` mapping. Add new cases; never remove existing ones.
+- `src/lib/format.ts` — `formatCommentTimestamp()` must stay 24-hour PHT. Never change to 12-hour.
+- `tailwind.config.js` — brand tokens are locked. No new colors, no hex codes, no arbitrary values.
+- `supabase/migrations/0001_init.sql` — do not re-run this file. Schema changes need a new numbered migration file.
+- RLS policies — never disable RLS, never add `using (true)` on write policies (SEC-2).
+- Both storage buckets (`lms-files`, `submission-files`) must stay **private** (SEC-5).
+- `src/components/ui/` — do not restyle or modify existing UI components. Add new ones if needed.
