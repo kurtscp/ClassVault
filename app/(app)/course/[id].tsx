@@ -36,9 +36,9 @@ import { useAuth } from '@/hooks/useAuth';
 import { useCourse } from '@/hooks/useCourse';
 import { useMaterials } from '@/hooks/useMaterials';
 import { toUserMessage } from '@/lib/errors';
-import { deleteCourse, listEnrolledStudents, removeStudent } from '@/services/courses';
+import { deleteCourse, EnrolledStudent, listEnrolledStudents, removeStudent } from '@/services/courses';
 import { unenrollFromCourse } from '@/services/enrollment';
-import { EnrolledStudent, MaterialType } from '@/types/database';
+import { MaterialType } from '@/types/database';
 
 interface TailwindThemeConfig {
   theme: { colors: { brand: string } };
@@ -282,7 +282,7 @@ export default function CourseDetailScreen() {
             key={item.id}
             material={item}
             showStatus={isStudent && activeTab === 'exercise'}
-            onPress={undefined}
+            onPress={() => router.push(`/course/${id}/material/${item.id}` as unknown as Href)}
           />
         ))}
       </View>
@@ -295,7 +295,7 @@ export default function CourseDetailScreen() {
     <Screen edges={['top', 'left', 'right']}>
       <FlatList
         data={[]}
-        renderItem={null}
+        renderItem={() => null}
         scrollEnabled={true}
         showsVerticalScrollIndicator={false}
         refreshControl={
@@ -562,4 +562,6 @@ export default function CourseDetailScreen() {
     </Screen>
   );
 }
+
+
 
