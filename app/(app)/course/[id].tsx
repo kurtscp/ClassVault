@@ -1,5 +1,6 @@
-﻿import { useCallback, useState } from 'react';
+import { useCallback, useState } from 'react';
 import {
+  ActivityIndicator,
   FlatList,
   Platform,
   Pressable,
@@ -21,6 +22,7 @@ import {
 } from 'lucide-react-native';
 
 import { MaterialRow } from '@/components/courses/MaterialRow';
+import { UploadButton } from '@/components/courses/UploadButton';
 import {
   Badge,
   Button,
@@ -35,8 +37,10 @@ import {
 import { useAuth } from '@/hooks/useAuth';
 import { useCourse } from '@/hooks/useCourse';
 import { useMaterials } from '@/hooks/useMaterials';
+import { useOpenMaterial } from '@/hooks/useOpenMaterial';
 import { toUserMessage } from '@/lib/errors';
 import { deleteCourse, EnrolledStudent, listEnrolledStudents, removeStudent } from '@/services/courses';
+import { deleteMaterial } from '@/services/storage';
 import { unenrollFromCourse } from '@/services/enrollment';
 import { MaterialType } from '@/types/database';
 
@@ -72,9 +76,10 @@ function MaterialSkeletons() {
  * Course detail screen showing materials grouped by type.
  *
  * SEC-6 RLS backing:
- *   Delete course    → courses_delete_owner        (instructor_id = auth.uid())
+ *   Delete course    → courses_delete_owner          (instructor_id = auth.uid())
  *   Remove student   → enrollments_delete_participant (is_course_instructor(course_id))
  *   Leave course     → enrollments_delete_participant (student_id = auth.uid())
+ *   Delete material  → lms_files_delete_course_owner (storage) + materials_delete_owner (DB row)
  */
 export default function CourseDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -98,6 +103,12 @@ export default function CourseDetailScreen() {
     studentId: role === 'student' ? (profile?.id ?? undefined) : undefined,
   });
 
+  const {
+    open: openMaterial,
+    openingId: openingMaterialId,
+    error: openMaterialError,
+  } = useOpenMaterial();
+
   const [codeCopied, setCodeCopied] = useState(false);
 
   // Instructor: expandable student roster
@@ -116,6 +127,15 @@ export default function CourseDetailScreen() {
   const [isLeaving, setIsLeaving] = useState(false);
   const [isRemoving, setIsRemoving] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+
+  // Material delete confirm
+  const [confirmDeleteMaterial, setConfirmDeleteMaterial] = useState<{
+    id: string;
+    filePath: string;
+    title: string;
+  } | null>(null);
+  const [isDeletingMaterial, setIsDeletingMaterial] = useState(false);
+  const [deleteMaterialError, setDeleteMaterialError] = useState<string | null>(null);
 
   if (!id) {
     return <Redirect href="/(app)/(tabs)" />;
@@ -207,6 +227,21 @@ export default function CourseDetailScreen() {
     await Promise.all([refetchCourse(), refetchMaterials()]);
   }, [refetchCourse, refetchMaterials]);
 
+  const handleConfirmDeleteMaterial = useCallback(async () => {
+    if (!confirmDeleteMaterial) return;
+    setIsDeletingMaterial(true);
+    setDeleteMaterialError(null);
+    try {
+      await deleteMaterial(confirmDeleteMaterial.id, confirmDeleteMaterial.filePath);
+      setConfirmDeleteMaterial(null);
+      await refetchMaterials();
+    } catch (err) {
+      setDeleteMaterialError(toUserMessage(err));
+    } finally {
+      setIsDeletingMaterial(false);
+    }
+  }, [confirmDeleteMaterial, refetchMaterials]);
+
   // ── Course loading / error ────────────────────────────────────────────
 
   if (courseLoading) {
@@ -277,14 +312,74 @@ export default function CourseDetailScreen() {
 
     return (
       <View className="gap-3">
-        {materials.map((item) => (
-          <MaterialRow
-            key={item.id}
-            material={item}
-            showStatus={isStudent && activeTab === 'exercise'}
-            onPress={() => router.push(`/course/${id}/material/${item.id}` as unknown as Href)}
-          />
-        ))}
+        {openMaterialError ? (
+          <Card className="border border-danger bg-emerald-50 p-3 mb-2">
+            <Text variant="small" tone="danger">{openMaterialError}</Text>
+          </Card>
+        ) : null}
+        {materials.map((item) => {
+          const isOpening = openingMaterialId === item.id;
+          const isPendingDelete = confirmDeleteMaterial?.id === item.id;
+          return (
+            <View key={item.id} className="gap-1">
+              <View className="relative">
+                <MaterialRow
+                  material={item}
+                  showStatus={isStudent && activeTab === 'exercise'}
+                  onPress={() => openMaterial(item)}
+                  onDelete={isOwner ? (matId, filePath, title) => {
+                    setDeleteMaterialError(null);
+                    setConfirmDeleteMaterial({ id: matId, filePath, title });
+                  } : undefined}
+                  isDeleting={isDeletingMaterial && isPendingDelete}
+                  brandColor={brandColor}
+                />
+                {isOpening ? (
+                  <View className="absolute inset-0 bg-white/70 rounded-card flex-row items-center justify-center gap-2">
+                    <ActivityIndicator size="small" color={brandColor} />
+                    <Text variant="small" tone="brand">Opening…</Text>
+                  </View>
+                ) : null}
+              </View>
+              {isPendingDelete ? (
+                <Card className="gap-3 border border-danger bg-canvas">
+                  <Text variant="small" className="text-ink">
+                    Delete {confirmDeleteMaterial.title}? Students will lose access.
+                  </Text>
+                  {deleteMaterialError ? (
+                    <Text variant="caption" tone="danger">{deleteMaterialError}</Text>
+                  ) : null}
+                  <View className="flex-row gap-2">
+                    <Button
+                      variant="danger"
+                      label="Delete"
+                      loading={isDeletingMaterial}
+                      onPress={handleConfirmDeleteMaterial}
+                    />
+                    <Button
+                      variant="ghost"
+                      label="Cancel"
+                      onPress={() => {
+                        setConfirmDeleteMaterial(null);
+                        setDeleteMaterialError(null);
+                      }}
+                    />
+                  </View>
+                </Card>
+              ) : null}
+              <Pressable
+                onPress={() => router.push(`/course/${id}/material/${item.id}` as unknown as Href)}
+                accessibilityRole="button"
+                accessibilityLabel="View details and comments"
+                className="flex-row items-center justify-end px-2 py-1"
+              >
+                <Text variant="caption" tone="secondary">
+                  View details & comments →
+                </Text>
+              </Pressable>
+            </View>
+          );
+        })}
       </View>
     );
   };
@@ -320,10 +415,13 @@ export default function CourseDetailScreen() {
                 <ArrowLeft size={24} strokeWidth={1.75} className="text-fg" />
               </Pressable>
               <Badge label={course.code} />
-              {/*
-               * headerAction slot — Member 4 inserts the Upload material button here.
-               * Keep this comment so Member 4 knows exactly where to add it.
-               */}
+              <View className="ml-auto">
+                <UploadButton
+                  courseId={course.id}
+                  instructorId={course.instructor_id}
+                  defaultTab={activeTab}
+                />
+              </View>
             </View>
 
             {/* ── Title + instructor ── */}

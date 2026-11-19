@@ -1,4 +1,4 @@
-﻿import { useCallback, useRef } from 'react';
+import { useCallback, useRef } from 'react';
 import {
   FlatList,
   KeyboardAvoidingView,
@@ -23,6 +23,7 @@ import {
 import { useAuth } from '@/hooks/useAuth';
 import { useComments } from '@/hooks/useComments';
 import { useMaterial } from '@/hooks/useMaterial';
+import { useOpenMaterial } from '@/hooks/useOpenMaterial';
 import { formatBytes, formatDate } from '@/lib/format';
 import { getStudentSubmission } from '@/services/submissions';
 import { useAsync } from '@/hooks/useAsync';
@@ -55,6 +56,12 @@ export default function MaterialDetailScreen() {
     removeComment,
     isSubmitting: commentSubmitting,
   } = useComments(materialId);
+
+  const {
+    open: openMaterial,
+    openingId: openingMaterialId,
+    error: openError,
+  } = useOpenMaterial();
 
   // Fetch student's own submission if this is an exercise and user is a student
   const isExercise = material?.type === 'exercise';
@@ -244,18 +251,19 @@ export default function MaterialDetailScreen() {
 
               {/* ── Action buttons ── */}
               <View className="gap-3 mb-6">
-                {/*
-                 * "Open file" slot — Member 4 wires this button to signed URL fetch + WebBrowser.
-                 * The onPress is intentionally undefined here; Member 4 owns this action.
-                 * Prop name: onOpenFile — add it to this screen when wiring.
-                 */}
                 <Button
                   variant="secondary"
                   label="Open file"
                   fullWidth
-                  onPress={undefined}
-                  disabled
+                  onPress={() => openMaterial(material)}
+                  loading={openingMaterialId === material.id}
+                  disabled={openingMaterialId === material.id}
                 />
+                {openError ? (
+                  <Text variant="small" tone="danger" className="text-center">
+                    {openError}
+                  </Text>
+                ) : null}
 
                 {/* Instructor: view all submissions for this exercise */}
                 {isExercise && isCourseInstructor ? (

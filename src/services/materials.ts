@@ -5,7 +5,7 @@ import { AppError } from '../types/domain';
 
 export type MaterialSummary = Pick<
   Material,
-  'id' | 'course_id' | 'title' | 'type' | 'file_name' | 'size_bytes' | 'created_at'
+  'id' | 'course_id' | 'title' | 'type' | 'file_path' | 'file_name' | 'size_bytes' | 'created_at'
 >;
 
 export type MaterialDetail = Material & {
@@ -33,7 +33,7 @@ export async function listMaterials(
 ): Promise<MaterialSummary[]> {
   let query = supabase
     .from('materials')
-    .select('id, course_id, title, type, file_name, size_bytes, created_at')
+    .select('id, course_id, title, type, file_path, file_name, size_bytes, created_at')
     .eq('course_id', courseId)
     .order('created_at', { ascending: false });
 
