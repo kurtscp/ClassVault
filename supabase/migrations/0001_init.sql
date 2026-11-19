@@ -10,15 +10,24 @@ set check_function_bodies = off;
 -- ============================================================
 -- 1. ENUMS
 -- ============================================================
-create type public.user_role as enum ('instructor', 'student');
-create type public.material_type as enum ('presentation', 'exercise');
+do $$ begin
+  create type public.user_role as enum ('instructor', 'student');
+exception
+  when duplicate_object then null;
+end $$;
+
+do $$ begin
+  create type public.material_type as enum ('presentation', 'exercise');
+exception
+  when duplicate_object then null;
+end $$;
 
 -- ============================================================
 -- 2. TABLES
 -- ============================================================
 
 -- 2a. Profiles
-create table public.profiles (
+create table if not exists public.profiles (
   id          uuid primary key references auth.users (id) on delete cascade,
   full_name   text not null,
   role        public.user_role not null default 'student',
@@ -31,19 +40,19 @@ returns text
 language plpgsql
 as $$
 declare
-  chars  text := 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; -- no 0/O/1/I to avoid confusion
-  code   text := '';
-  i      int;
-  done   bool := false;
+  chars   text := 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; -- no 0/O/1/I to avoid confusion
+  v_code  text := '';
+  i       int;
+  done    bool := false;
 begin
   while not done loop
-    code := '';
+    v_code := '';
     for i in 1..6 loop
-      code := code || substr(chars, floor(random() * length(chars) + 1)::int, 1);
+      v_code := v_code || substr(chars, floor(random() * length(chars) + 1)::int, 1);
     end loop;
-    done := not exists (select 1 from public.courses where join_code = code);
+    done := not exists (select 1 from public.courses where join_code = v_code);
   end loop;
-  return code;
+  return v_code;
 end;
 $$;
 
@@ -186,6 +195,20 @@ as $$
   );
 $$;
 
+-- 4c2. Helper: is the current user the instructor of this course? (Breaks RLS policy recursion)
+create or replace function public.is_course_instructor(p_course_id uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select exists (
+    select 1 from public.courses c
+    where c.id = p_course_id and c.instructor_id = (select auth.uid())
+  );
+$$;
+
 -- 4d. Enrollment RPC: enroll a student using a join code
 create or replace function public.enroll_with_code(p_join_code text)
 returns uuid  -- returns the course_id
@@ -248,7 +271,8 @@ create policy "courses_select_enrolled_or_owner"
     instructor_id = (select auth.uid())
     or exists (
       select 1 from public.enrollments e
-      where e.course_id = id and e.student_id = (select auth.uid())
+      where e.course_id = public.courses.id
+        and e.student_id = (select auth.uid())
     )
   );
 
@@ -272,10 +296,7 @@ create policy "enrollments_select_participant"
   on public.enrollments for select to authenticated
   using (
     student_id = (select auth.uid())
-    or exists (
-      select 1 from public.courses c
-      where c.id = course_id and c.instructor_id = (select auth.uid())
-    )
+    or public.is_course_instructor(course_id)
   );
 
 -- DELETE: student can unenroll, or instructor can remove a student
@@ -283,29 +304,14 @@ create policy "enrollments_delete_participant"
   on public.enrollments for delete to authenticated
   using (
     student_id = (select auth.uid())
-    or exists (
-      select 1 from public.courses c
-      where c.id = course_id and c.instructor_id = (select auth.uid())
-    )
+    or public.is_course_instructor(course_id)
   );
 
 -- ----- MATERIALS -----
 -- Readable by course owner or enrolled students
 create policy "materials_select_enrolled_or_owner"
   on public.materials for select to authenticated
-  using (
-    exists (
-      select 1 from public.courses c
-      where c.id = course_id
-      and (
-        c.instructor_id = (select auth.uid())
-        or exists (
-          select 1 from public.enrollments e
-          where e.course_id = c.id and e.student_id = (select auth.uid())
-        )
-      )
-    )
-  );
+  using (public.is_enrolled(course_id));
 
 create policy "materials_insert_course_owner"
   on public.materials for insert to authenticated

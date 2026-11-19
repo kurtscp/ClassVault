@@ -1,4 +1,4 @@
-import { useState } from 'react';
+﻿import { useState } from 'react';
 import {
   KeyboardAvoidingView,
   Platform,
@@ -10,17 +10,19 @@ import { ArrowLeft } from 'lucide-react-native';
 
 import { Button, Input, Screen, Text } from '@/components/ui';
 import { useAuth } from '@/hooks/useAuth';
+import { useCourses } from '@/hooks/useCourses';
 import { useEnrollment } from '@/hooks/useEnrollment';
 
 export default function EnrollScreen() {
   const router = useRouter();
   const { role } = useAuth();
-  const { enroll, isEnrolling, error: hookError } = useEnrollment();
+  const { refetch } = useCourses();
+  const { enroll, isEnrolling, error: hookError } = useEnrollment({ onCoursesRefetch: refetch });
 
   const [code, setCode] = useState('');
   const [localError, setLocalError] = useState<string | null>(null);
 
-  // If an instructor reaches this route, redirect to Courses (SEC-6, SEC-7)
+  // Instructors cannot enroll; redirect them to the courses dashboard
   if (role === 'instructor') {
     return <Redirect href="/(app)/(tabs)" />;
   }
@@ -30,14 +32,12 @@ export default function EnrollScreen() {
 
   async function handleSubmit() {
     if (isSubmitDisabled) return;
-
     setLocalError(null);
-
     try {
       await enroll(code.trim());
-      // On success: navigates to /course/<returned_course_id> via useEnrollment hook
+      // On success: useEnrollment calls refetch then router.replace('/(app)/(tabs)')
     } catch {
-      // Error is set in useEnrollment hook and reflected in UI via effectiveError
+      // Error shown via effectiveError
     }
   }
 
@@ -47,7 +47,6 @@ export default function EnrollScreen() {
       className="flex-1"
     >
       <Screen scroll className="py-6">
-        {/* Header: back button + title (UX-4) */}
         <View className="flex-row items-center mb-6">
           <Pressable
             accessibilityRole="button"
@@ -62,7 +61,6 @@ export default function EnrollScreen() {
           </Text>
         </View>
 
-        {/* Join code entry form */}
         <View className="mb-6">
           <Input
             label="Join code"

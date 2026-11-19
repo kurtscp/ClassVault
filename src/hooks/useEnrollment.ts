@@ -1,5 +1,5 @@
-import { useCallback, useState } from 'react';
-import { useRouter, type Href } from 'expo-router';
+﻿import { useCallback, useState } from 'react';
+import { useRouter } from 'expo-router';
 
 import { toUserMessage } from '../lib/errors';
 import { enrollWithCode, unenrollFromCourse } from '../services/enrollment';
@@ -16,10 +16,6 @@ export interface UseEnrollmentResult {
   error: string | null;
 }
 
-/**
- * Hook managing course enrollment and unenrollment actions (P2.4).
- * Exposes loading states, mapped error messages, and automatic post-action navigation.
- */
 export function useEnrollment(options?: UseEnrollmentOptions): UseEnrollmentResult {
   const router = useRouter();
   const [isEnrolling, setIsEnrolling] = useState(false);
@@ -33,8 +29,7 @@ export function useEnrollment(options?: UseEnrollmentOptions): UseEnrollmentResu
       try {
         const courseId = await enrollWithCode(code);
         options?.onCoursesRefetch?.();
-        // Navigate to course detail upon successful enrollment
-        router.push(`/course/${courseId}` as unknown as Href);
+        router.replace('/(app)/(tabs)');
         return courseId;
       } catch (err) {
         const msg = toUserMessage(err);
@@ -54,7 +49,6 @@ export function useEnrollment(options?: UseEnrollmentOptions): UseEnrollmentResu
       try {
         await unenrollFromCourse(courseId);
         options?.onCoursesRefetch?.();
-        // Return to the Courses dashboard upon successful unenrollment
         router.replace('/(app)/(tabs)');
       } catch (err) {
         const msg = toUserMessage(err);
